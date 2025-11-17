@@ -24,9 +24,9 @@ async function refreshCache() {
   try {
     console.log('Fetching data from Azure DevOps...');
     
-    // Get user stories with my verify tasks
-    const allItems = await azureClient.getUserStoriesWithMyVerifyTasks(userEmail);
-    console.log(`Found ${allItems.length} user stories with your verify tasks`);
+    // Get all user stories in Sprint 154
+    const allItems = await azureClient.getAllCurrentSprintUserStories();
+    console.log(`Found ${allItems.length} user stories in Sprint 154`);
     
     // Get detailed information for each item
     const detailedItems = await Promise.all(

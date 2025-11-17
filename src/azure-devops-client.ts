@@ -25,7 +25,16 @@ export class AzureDevOpsClient {
     }
 
     const ids = queryResult.workItems.map(wi => wi.id!);
-    const workItems = await witApi.getWorkItems(ids, undefined, undefined, undefined, 1);
+    
+    // Azure DevOps API has a limit of 200 work items per request, so batch the requests
+    const batchSize = 200;
+    const workItems: WorkItem[] = [];
+    
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batchIds = ids.slice(i, i + batchSize);
+      const batchWorkItems = await witApi.getWorkItems(batchIds, undefined, undefined, undefined, 1);
+      workItems.push(...batchWorkItems);
+    }
     
     return workItems;
   }
@@ -94,7 +103,7 @@ export class AzureDevOpsClient {
     const wiql = `
       SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo]
       FROM WorkItems
-      WHERE [System.IterationPath] = @currentIteration
+      WHERE [System.IterationPath] = 'ericssondotcom-vnext\\Sprint 154'
         AND [System.WorkItemType] = 'User Story'
       ORDER BY [System.State] ASC, [System.ChangedDate] DESC
     `;

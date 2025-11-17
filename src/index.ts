@@ -8,17 +8,24 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import * as dotenv from 'dotenv';
-import { AzureDevOpsClient } from './azure-devops-client.js';
-import type { WorkItem } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
-// Initialize Azure DevOps client
-const azureClient = new AzureDevOpsClient(
-  process.env.AZURE_DEVOPS_ORG_URL!,
-  process.env.AZURE_DEVOPS_TOKEN!,
-  process.env.AZURE_DEVOPS_PROJECT!
-);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const cacheFile = path.join(__dirname, '..', 'cache', 'work-items.json');
+
+// Load cache data
+function loadCache() {
+  if (!fs.existsSync(cacheFile)) {
+    throw new Error('Cache file not found. Run "npm run refresh" first.');
+  }
+  const data = fs.readFileSync(cacheFile, 'utf8');
+  return JSON.parse(data);
+}
 
 // Define tools
 const TOOLS: Tool[] = [
@@ -104,17 +111,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     switch (name) {
       case 'get_my_current_sprint_tickets': {
-        const workItems = await azureClient.getMyCurrentSprintItems(args.userEmail as string);
+        const cache = loadCache();
+        const userEmail = args.userEmail as string;
+        const workItems = cache.workItems.filter((wi: any) => 
+          wi.assignedTo && wi.assignedTo.toLowerCase().includes(userEmail.toLowerCase().split('@')[0])
+        );
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(workItems.map((wi: WorkItem) => ({
+              text: JSON.stringify(workItems.map((wi: any) => ({
                 id: wi.id,
-                title: wi.fields?.['System.Title'],
-                state: wi.fields?.['System.State'],
-                assignedTo: wi.fields?.['System.AssignedTo']?.displayName,
-                type: wi.fields?.['System.WorkItemType']
+                title: wi.title,
+                state: wi.state,
+                assignedTo: wi.assignedTo,
+                type: wi.type
               })), null, 2)
             }
           ]
@@ -122,16 +133,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_tickets_by_state': {
-        const workItems = await azureClient.getWorkItemsByState(args.state as string);
+        const cache = loadCache();
+        const state = args.state as string;
+        const workItems = cache.workItems.filter((wi: any) => 
+          wi.state.toLowerCase() === state.toLowerCase()
+        );
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(workItems.map((wi: WorkItem) => ({
+              text: JSON.stringify(workItems.map((wi: any) => ({
                 id: wi.id,
-                title: wi.fields?.['System.Title'],
-                state: wi.fields?.['System.State'],
-                assignedTo: wi.fields?.['System.AssignedTo']?.displayName
+                title: wi.title,
+                state: wi.state,
+                assignedTo: wi.assignedTo
               })), null, 2)
             }
           ]
@@ -139,19 +154,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_work_item_details': {
-        const workItem = await azureClient.getWorkItem(args.id as number);
+        const cache = loadCache();
+        const id = args.id as number;
+        const workItem = cache.workItems.find((wi: any) => wi.id === id);
+        
+        if (!workItem) {
+          throw new Error(`Work item ${id} not found in cache. Run "npm run refresh" to update.`);
+        }
+        
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify({
                 id: workItem.id,
-                title: workItem.fields?.['System.Title'],
-                description: workItem.fields?.['System.Description'],
-                state: workItem.fields?.['System.State'],
-                assignedTo: workItem.fields?.['System.AssignedTo']?.displayName,
-                createdDate: workItem.fields?.['System.CreatedDate'],
-                tags: workItem.fields?.['System.Tags']
+                title: workItem.title,
+                description: workItem.description,
+                state: workItem.state,
+                assignedTo: workItem.assignedTo,
+                createdDate: workItem.createdDate,
+                changedDate: workItem.changedDate,
+                tags: workItem.tags,
+                comments: workItem.comments
               }, null, 2)
             }
           ]
@@ -159,16 +183,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_current_sprint_info': {
-        const sprint = await azureClient.getCurrentSprint();
+        const cache = loadCache();
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify({
-                name: sprint.name,
-                path: sprint.path,
-                startDate: sprint.attributes?.startDate,
-                finishDate: sprint.attributes?.finishDate
+                name: cache.sprint?.name || 'Sprint 154',
+                path: cache.sprint?.path,
+                startDate: cache.sprint?.startDate,
+                finishDate: cache.sprint?.finishDate,
+                lastUpdated: cache.lastUpdated,
+                totalItems: cache.workItems.length
               }, null, 2)
             }
           ]
