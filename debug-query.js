@@ -17,7 +17,7 @@ async function debugQuery() {
     const wiql = `
       SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo]
       FROM WorkItems
-      WHERE [System.IterationPath] = 'ericssondotcom-vnext\\Sprint 154'
+      WHERE [System.IterationPath] = @currentIteration
         AND [System.WorkItemType] = 'User Story'
       ORDER BY [System.State] ASC, [System.Id] ASC
     `;
