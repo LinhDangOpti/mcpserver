@@ -13,7 +13,8 @@ dotenv.config();
 const azureClient = new AzureDevOpsClient(
   process.env.AZURE_DEVOPS_ORG_URL!,
   process.env.AZURE_DEVOPS_TOKEN!,
-  process.env.AZURE_DEVOPS_PROJECT!
+  process.env.AZURE_DEVOPS_PROJECT!,
+  process.env.AZURE_DEVOPS_TEAM ?? process.env.AZURE_DEVOPS_PROJECT!
 );
 
 const userEmail = process.env.AZURE_DEVOPS_USER_EMAIL;
