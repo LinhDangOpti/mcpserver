@@ -6,11 +6,12 @@ export class AzureDevOpsClient {
   private connection: azdev.WebApi;
   private orgUrl: string;
   private project: string;
+  private team: string;
 
-  constructor(orgUrl: string, token: string, project: string) {
+  constructor(orgUrl: string, token: string, project: string, team: string) {
     this.orgUrl = orgUrl;
     this.project = project;
-    
+    this.team = team;
     const authHandler = azdev.getPersonalAccessTokenHandler(token);
     this.connection = new azdev.WebApi(orgUrl, authHandler);
   }
@@ -19,23 +20,23 @@ export class AzureDevOpsClient {
   async getWorkItemsByQuery(wiql: string): Promise<WorkItem[]> {
     const witApi = await this.connection.getWorkItemTrackingApi();
     const queryResult = await witApi.queryByWiql({ query: wiql }, { project: this.project });
-    
+
     if (!queryResult.workItems || queryResult.workItems.length === 0) {
       return [];
     }
 
     const ids = queryResult.workItems.map(wi => wi.id!);
-    
+
     // Azure DevOps API has a limit of 200 work items per request, so batch the requests
     const batchSize = 200;
     const workItems: WorkItem[] = [];
-    
+
     for (let i = 0; i < ids.length; i += batchSize) {
       const batchIds = ids.slice(i, i + batchSize);
       const batchWorkItems = await witApi.getWorkItems(batchIds, undefined, undefined, undefined, 1);
       workItems.push(...batchWorkItems);
     }
-    
+
     return workItems;
   }
 
@@ -65,8 +66,8 @@ export class AzureDevOpsClient {
   // Get current sprint information
   async getCurrentSprint(): Promise<TeamSettingsIteration> {
     const workApi = await this.connection.getWorkApi();
-    const teamContext = { project: this.project, team: this.project };
-    
+    const teamContext = { project: this.project, team: this.team };
+
     const iterations = await workApi.getTeamIterations(teamContext, 'current');
     return iterations[0];
   }
@@ -152,7 +153,7 @@ export class AzureDevOpsClient {
     const wiql = `
       SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo]
       FROM WorkItems
-      WHERE [System.IterationPath] = 'ericssondotcom-vnext\\Sprint 154'
+      WHERE [System.IterationPath] = @currentIteration
         AND [System.WorkItemType] = 'User Story'
       ORDER BY [System.State] ASC, [System.ChangedDate] DESC
     `;
@@ -163,7 +164,7 @@ export class AzureDevOpsClient {
   async getChildTasks(parentId: number): Promise<WorkItem[]> {
     const witApi = await this.connection.getWorkItemTrackingApi();
     const workItem = await witApi.getWorkItem(parentId, undefined, undefined, 1);
-    
+
     if (!workItem.relations) {
       return [];
     }
@@ -189,29 +190,29 @@ export class AzureDevOpsClient {
   async getUserStoriesWithMyVerifyTasks(userEmail: string): Promise<WorkItem[]> {
     // First get all user stories
     const userStories = await this.getAllCurrentSprintUserStories();
-    
+
     // For each user story, get child tasks
     const storiesWithVerifyTasks: WorkItem[] = [];
-    
+
     for (const story of userStories) {
       const children = await this.getChildTasks(story.id!);
-      
+
       // Check if any child task is assigned to user and title starts with "Verify"
       const hasMyVerifyTask = children.some(child => {
         const title = child.fields?.['System.Title'] || '';
         const assignedTo = child.fields?.['System.AssignedTo']?.uniqueName || '';
         const workItemType = child.fields?.['System.WorkItemType'] || '';
-        
-        return workItemType === 'Task' && 
-               title.startsWith('Verify') && 
-               assignedTo === userEmail;
+
+        return workItemType === 'Task' &&
+          title.startsWith('Verify') &&
+          assignedTo === userEmail;
       });
-      
+
       if (hasMyVerifyTask) {
         storiesWithVerifyTasks.push(story);
       }
     }
-    
+
     return storiesWithVerifyTasks;
   }
 }
