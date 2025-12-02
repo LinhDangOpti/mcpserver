@@ -87,6 +87,55 @@ export class AzureDevOpsClient {
     }
   }
 
+  // Get work item development links (pull requests, commits, builds)
+  async getWorkItemDevelopmentLinks(id: number): Promise<any> {
+    try {
+      const witApi = await this.connection.getWorkItemTrackingApi();
+      const workItem = await witApi.getWorkItem(id, undefined, undefined, 1);
+      
+      // Get external links that represent pull requests
+      const pullRequests: any[] = [];
+      const commits: any[] = [];
+      
+      if (workItem.relations) {
+        for (const relation of workItem.relations) {
+          // Pull Request links
+          if (relation.rel === 'ArtifactLink' && relation.url?.includes('vstfs:///Git/PullRequestId')) {
+            const prId = relation.url.split('/').pop();
+            pullRequests.push({
+              id: prId,
+              url: relation.url,
+              attributes: relation.attributes
+            });
+          }
+          // Commit links
+          else if (relation.rel === 'ArtifactLink' && relation.url?.includes('vstfs:///Git/Commit')) {
+            const commitId = relation.url.split('/').pop();
+            commits.push({
+              id: commitId,
+              url: relation.url,
+              attributes: relation.attributes
+            });
+          }
+        }
+      }
+      
+      return {
+        pullRequests,
+        commits,
+        hasPullRequests: pullRequests.length > 0,
+        hasCommits: commits.length > 0
+      };
+    } catch (error) {
+      return {
+        pullRequests: [],
+        commits: [],
+        hasPullRequests: false,
+        hasCommits: false
+      };
+    }
+  }
+
   // Get all work items in current sprint
   async getAllCurrentSprintItems(): Promise<WorkItem[]> {
     const wiql = `

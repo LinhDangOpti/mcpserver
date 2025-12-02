@@ -34,6 +34,8 @@ async function refreshCache() {
         try {
           const workItem = await azureClient.getWorkItem(item.id);
           const comments = await azureClient.getWorkItemComments(item.id);
+          const devLinks = await azureClient.getWorkItemDevelopmentLinks(item.id);
+          
           return {
             id: workItem.id,
             title: workItem.fields?.['System.Title'],
@@ -50,7 +52,13 @@ async function refreshCache() {
               date: c.createdDate,
               text: c.text
             })) || [],
-            relations: workItem.relations || []
+            relations: workItem.relations || [],
+            development: {
+              pullRequests: devLinks.pullRequests || [],
+              commits: devLinks.commits || [],
+              hasPullRequests: devLinks.hasPullRequests || false,
+              hasCommits: devLinks.hasCommits || false
+            }
           };
         } catch (error) {
           console.error(`Error fetching details for item ${item.id}:`, error.message);
