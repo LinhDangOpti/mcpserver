@@ -79,6 +79,29 @@ const TOOLS: Tool[] = [
       properties: {},
       required: []
     }
+  },
+  {
+    name: 'list_all_current_sprint_tickets',
+    description: 'List all work items in the current sprint with summary information',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'query_tickets',
+    description: 'Query tickets using natural language. Supports filtering by state, development links (commits, pull requests), assignee, tags, and combinations. Examples: "tickets in ACC without commits", "testing tickets missing PRs", "active tickets assigned to John"',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language query to filter tickets'
+        }
+      },
+      required: ['query']
+    }
   }
 ];
 
@@ -196,6 +219,94 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 lastUpdated: cache.lastUpdated,
                 totalItems: cache.workItems.length
               }, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'list_all_current_sprint_tickets': {
+        const cache = loadCache();
+        const summary = cache.workItems.map((wi: any, idx: number) => ({
+          number: idx + 1,
+          id: wi.id,
+          title: wi.title,
+          state: wi.state,
+          assignedTo: wi.assignedTo || 'Unassigned',
+          tags: wi.tags || 'none'
+        }));
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Sprint: ${cache.sprint?.name || 'Unknown'}\nLast Updated: ${cache.lastUpdated}\nTotal Work Items: ${cache.workItems.length}\n\n${JSON.stringify(summary, null, 2)}`
+            }
+          ]
+        };
+      }
+
+      case 'query_tickets': {
+        const cache = loadCache();
+        const query = (args.query as string).toLowerCase();
+        
+        // Parse query for filters
+        const states = ['in acc', 'uat approved', 'testing in intg', 'ready for testing', 'active', 'done', 'closed', 'new'];
+        const matchedStates = states.filter(s => query.includes(s));
+        
+        const noCommits = query.includes('no commit') || query.includes('without commit') || query.includes('missing commit');
+        const noPRs = query.includes('no pr') || query.includes('no pull request') || query.includes('without pr') || query.includes('missing pr');
+        const hasCommits = query.includes('has commit') || query.includes('with commit');
+        const hasPRs = query.includes('has pr') || query.includes('has pull request') || query.includes('with pr');
+        
+        let filtered = cache.workItems;
+        
+        // Filter by states
+        if (matchedStates.length > 0) {
+          filtered = filtered.filter((wi: any) => 
+            matchedStates.some(s => wi.state.toLowerCase().includes(s) || s.includes(wi.state.toLowerCase()))
+          );
+        }
+        
+        // Filter by commits
+        if (noCommits) {
+          filtered = filtered.filter((wi: any) => !wi.development?.hasCommits);
+        }
+        if (hasCommits) {
+          filtered = filtered.filter((wi: any) => wi.development?.hasCommits);
+        }
+        
+        // Filter by PRs
+        if (noPRs) {
+          filtered = filtered.filter((wi: any) => !wi.development?.hasPullRequests);
+        }
+        if (hasPRs) {
+          filtered = filtered.filter((wi: any) => wi.development?.hasPullRequests);
+        }
+        
+        // Extract assignee if mentioned
+        const assigneeMatch = query.match(/assign(?:ed)?\s+to\s+(\w+)/i);
+        if (assigneeMatch) {
+          const assignee = assigneeMatch[1];
+          filtered = filtered.filter((wi: any) => 
+            wi.assignedTo?.toLowerCase().includes(assignee.toLowerCase())
+          );
+        }
+        
+        const results = filtered.map((wi: any) => ({
+          id: wi.id,
+          title: wi.title,
+          state: wi.state,
+          assignedTo: wi.assignedTo || 'Unassigned',
+          hasCommits: wi.development?.hasCommits || false,
+          hasPRs: wi.development?.hasPullRequests || false,
+          tags: wi.tags || 'none'
+        }));
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Query: "${args.query}"\nMatched ${results.length} ticket(s)\n\n${JSON.stringify(results, null, 2)}`
             }
           ]
         };

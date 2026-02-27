@@ -9,12 +9,17 @@
     "start": "node dist/index.js",
     "refresh": "npm run build && node dist/refresh-cache.js",
     "query": "node query-cache.js",
+    "test-webhook": "node test-teams-webhook.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
     "azure-devops-mcp": "./dist/index.js"
   },
-  "keywords": ["mcp", "azure-devops", "copilot"],
+  "keywords": [
+    "mcp",
+    "azure-devops",
+    "copilot"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {

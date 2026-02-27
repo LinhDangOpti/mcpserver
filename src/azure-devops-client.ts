@@ -64,13 +64,102 @@ export class AzureDevOpsClient {
   }
 
   // Get current sprint information
-  async getCurrentSprint(): Promise<TeamSettingsIteration> {
-    const workApi = await this.connection.getWorkApi();
-    const teamContext = { project: this.project, team: this.team };
+  // async getCurrentSprint(): Promise<TeamSettingsIteration | null> {
+  //   const workApi = await this.connection.getWorkApi();
+  //   const teamContext = { project: this.project, team: this.team };
 
-    const iterations = await workApi.getTeamIterations(teamContext, 'current');
-    return iterations[0];
+  //   const iterations = await workApi.getTeamIterations(teamContext, '$current');
+  //   if (!iterations || iterations.length === 0) {
+  //     return null;
+  //   }
+  //   return iterations[0];
+  // }
+
+  // Get current sprint information
+// Get current sprint information
+// Get current sprint information
+async getCurrentSprint(): Promise<TeamSettingsIteration | null> {
+  try {
+    const workApi = await this.connection.getWorkApi();
+
+    // Try different team context variations
+    const teamVariations = [
+      { project: this.project, team: this.team },
+      { project: this.project, team: `${this.project} Team` },
+      { projectId: this. project, teamId: this.team },
+    ];
+
+    let iterations: any[] | null = null;
+    let successfulContext = null;
+
+    for (const context of teamVariations) {
+      try {
+        const result = await workApi.getTeamIterations(context as any);
+        if (result && result.length > 0) {
+          iterations = result;
+          successfulContext = context;
+          break;
+        }
+      } catch (err) {
+        // Try next variation
+      }
+    }
+    
+    if (iterations && iterations.length > 0) {
+      const today = new Date();
+      const currentSprint = iterations. find(iteration => {
+        if (iteration.attributes?.startDate && iteration.attributes?.finishDate) {
+          const startDate = new Date(iteration.attributes.startDate);
+          const finishDate = new Date(iteration.attributes.finishDate);
+          return today >= startDate && today <= finishDate;
+        }
+        return false;
+      });
+      
+      if (currentSprint) {
+        return currentSprint;
+      }
+    }
+
+    // Fallback: Get sprint info from existing work items query
+    const workItems = await this.getAllCurrentSprintUserStories();
+    
+    if (workItems. length > 0) {
+      const firstWorkItem = workItems[0];
+      const iterationPath = firstWorkItem.fields?.['System.IterationPath'];
+      
+      if (iterationPath) {
+        const pathParts = iterationPath.split('\\');
+        const sprintName = pathParts[pathParts. length - 1];
+        
+        // Try to get iteration by name if we found a successful context
+        if (successfulContext) {
+          try {
+            const iteration = await workApi.getTeamIteration(successfulContext as any, sprintName);
+            if (iteration) {
+              return iteration;
+            }
+          } catch (err) {
+            // Fall through to basic sprint object
+          }
+        }
+        
+        // Return basic sprint object
+        return {
+          id: iterationPath,
+          name: sprintName,
+          path: iterationPath,
+          attributes: {}
+        } as TeamSettingsIteration;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error getting current sprint:', error);
+    return null;
   }
+}
 
   // Get work item details
   async getWorkItem(id: number): Promise<WorkItem> {
@@ -94,9 +183,10 @@ export class AzureDevOpsClient {
       const witApi = await this.connection.getWorkItemTrackingApi();
       const workItem = await witApi.getWorkItem(id, undefined, undefined, 1);
       
-      // Get external links that represent pull requests
+      // Get external links that represent pull requests, commits, and branches
       const pullRequests: any[] = [];
       const commits: any[] = [];
+      const branches: any[] = [];
       
       if (workItem.relations) {
         for (const relation of workItem.relations) {
@@ -118,21 +208,34 @@ export class AzureDevOpsClient {
               attributes: relation.attributes
             });
           }
+          // Branch links
+          else if (relation.rel === 'ArtifactLink' && relation.url?.includes('vstfs:///Git/Ref')) {
+            const branchId = relation.url.split('/').pop();
+            branches.push({
+              id: branchId,
+              url: relation.url,
+              attributes: relation.attributes
+            });
+          }
         }
       }
       
       return {
         pullRequests,
         commits,
+        branches,
         hasPullRequests: pullRequests.length > 0,
-        hasCommits: commits.length > 0
+        hasCommits: commits.length > 0,
+        hasBranches: branches.length > 0
       };
     } catch (error) {
       return {
         pullRequests: [],
         commits: [],
+        branches: [],
         hasPullRequests: false,
-        hasCommits: false
+        hasCommits: false,
+        hasBranches: false
       };
     }
   }
@@ -148,13 +251,13 @@ export class AzureDevOpsClient {
     return this.getWorkItemsByQuery(wiql);
   }
 
-  // Get all user stories in current sprint
+  // Get all user stories and bugs in current sprint
   async getAllCurrentSprintUserStories(): Promise<WorkItem[]> {
     const wiql = `
       SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo]
       FROM WorkItems
       WHERE [System.IterationPath] = @currentIteration
-        AND [System.WorkItemType] = 'User Story'
+        AND ([System.WorkItemType] = 'User Story' OR [System.WorkItemType] = 'Bug')
       ORDER BY [System.State] ASC, [System.ChangedDate] DESC
     `;
     return this.getWorkItemsByQuery(wiql);
