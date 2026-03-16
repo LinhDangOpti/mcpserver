@@ -21,7 +21,7 @@ export class AzureDevOpsClient {
     const witApi = await this.connection.getWorkItemTrackingApi();
     const queryResult = await witApi.queryByWiql({ query: wiql }, { project: this.project });
 
-    if (!queryResult.workItems || queryResult.workItems.length === 0) {
+    if (!queryResult?.workItems || queryResult?.workItems?.length === 0) {
       return [];
     }
 
