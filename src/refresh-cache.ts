@@ -9,21 +9,6 @@ import type { TeamSettingsIteration } from "azure-devops-node-api/interfaces/Wor
 
 dotenv.config();
 
-const azureClient = new AzureDevOpsClient(
-    process.env.AZURE_DEVOPS_ORG_URL!,
-    process.env.AZURE_DEVOPS_TOKEN!,
-    process.env.AZURE_DEVOPS_PROJECT!,
-    process.env.AZURE_DEVOPS_TEAM ?? process.env.AZURE_DEVOPS_PROJECT!
-);
-
-const jiraClient = new JiraClient(
-    process.env.JIRA_BASE_URL!,
-    process.env.JIRA_EMAIL!,
-    process.env.JIRA_API_TOKEN!,
-    process.env.JIRA_PROJECT!,
-    process.env.JIRA_BOARD_ID
-);
-
 interface WorkItemCache {
     id?: number | string;
     key?: string;
@@ -170,140 +155,163 @@ async function runCacheRefresh<TSprint extends JiraSprint | TeamSettingsIteratio
 async function refreshCacheADO(){
     const { cacheFilePath, cacheDir } = getCacheDir('work-items');
     const userEmail = process.env.AZURE_DEVOPS_USER_EMAIL;
+    try {
+        const azureClient = new AzureDevOpsClient(
+            process.env.AZURE_DEVOPS_ORG_URL!,
+            process.env.AZURE_DEVOPS_TOKEN!,
+            process.env.AZURE_DEVOPS_PROJECT!,
+            process.env.AZURE_DEVOPS_TEAM ?? process.env.AZURE_DEVOPS_PROJECT!
+        );
 
-    await runCacheRefresh<TeamSettingsIteration, WorkItem>({
-        platformName: "Azure DevOps",
-        fetchSprint: () => azureClient.getCurrentSprint(),
-        cacheDir,
-        cacheFilePath,
-        fetchSprintItems: () => azureClient.getAllCurrentSprintUserStories(),
-        transformItems: async (item) => {
-            if (!item.id) return null;
+        await runCacheRefresh<TeamSettingsIteration, WorkItem>({
+            platformName: "Azure DevOps",
+            fetchSprint: () => azureClient.getCurrentSprint(),
+            cacheDir,
+            cacheFilePath,
+            fetchSprintItems: () => azureClient.getAllCurrentSprintUserStories(),
+            transformItems: async (item) => {
+                if (!item.id) return null;
 
-            const [comments, devLinks, subtasks] = await Promise.all([
-                azureClient.getWorkItemComments(item.id),
-                azureClient.getWorkItemDevelopmentLinks(item.id),
-                azureClient.getChildTasks(item.id)
-            ]);
+                const [comments, devLinks, subtasks] = await Promise.all([
+                    azureClient.getWorkItemComments(item.id),
+                    azureClient.getWorkItemDevelopmentLinks(item.id),
+                    azureClient.getChildTasks(item.id)
+                ]);
 
-            return {
-                id: item.id,
-                title: item.fields?.['System.Title'],
-                type: item.fields?.['System.WorkItemType'],
-                state: item.fields?.['System.State'],
-                assignedTo: item.fields?.['System.AssignedTo']?.displayName,
-                description: item.fields?.['System.Description'],
-                createdDate: item.fields?.['System.CreatedDate'],
-                changedDate: item.fields?.['System.ChangedDate'],
-                tags: item.fields?.['System.Tags'],
-                reproSteps: item.fields?.['Microsoft.VSTS.TCM.ReproSteps'],
-                comments: comments?.comments?.map((c: any) => ({
-                    author: c.createdBy?.displayName,
-                    date: c.createdDate,
-                    text: c.text
-                })) || [],
-                relations: item.relations || [],
-                development: {
-                    pullRequests: devLinks.pullRequests || [],
-                    commits: devLinks.commits || [],
-                    branches: devLinks.branches || [],
-                    hasPullRequests: devLinks.hasPullRequests || false,
-                    hasCommits: devLinks.hasCommits || false,
-                    hasBranches: devLinks.hasBranches || false
-                },
-                subtasks: subtasks.map((subtask) => ({
-                    id: subtask.id,
-                    title: subtask.fields?.['System.Title'],
-                    type: subtask.fields?.['System.WorkItemType'],
-                    state: subtask.fields?.['System.State'],
-                    assignedTo: subtask.fields?.['System.AssignedTo']?.displayName,
-                    parentId: item.id,
-                }))
-            }
-        },
-        buildCachePayload: (items, sprint) => ({
-            lastUpdated: new Date().toISOString(),
-            sprint: sprint ? {
-                name: sprint.name!,
-                path: sprint.path!,
-                startDate: sprint.attributes?.startDate?.toString(),
-                finishDate: sprint.attributes?.finishDate?.toString()
-            } : null,
-            userEmail: userEmail,
-            workItems: items
-        }),
-    })
+                return {
+                    id: item.id,
+                    title: item.fields?.['System.Title'],
+                    type: item.fields?.['System.WorkItemType'],
+                    state: item.fields?.['System.State'],
+                    assignedTo: item.fields?.['System.AssignedTo']?.displayName,
+                    description: item.fields?.['System.Description'],
+                    createdDate: item.fields?.['System.CreatedDate'],
+                    changedDate: item.fields?.['System.ChangedDate'],
+                    tags: item.fields?.['System.Tags'],
+                    reproSteps: item.fields?.['Microsoft.VSTS.TCM.ReproSteps'],
+                    comments: comments?.comments?.map((c: any) => ({
+                        author: c.createdBy?.displayName,
+                        date: c.createdDate,
+                        text: c.text
+                    })) || [],
+                    relations: item.relations || [],
+                    development: {
+                        pullRequests: devLinks.pullRequests || [],
+                        commits: devLinks.commits || [],
+                        branches: devLinks.branches || [],
+                        hasPullRequests: devLinks.hasPullRequests || false,
+                        hasCommits: devLinks.hasCommits || false,
+                        hasBranches: devLinks.hasBranches || false
+                    },
+                    subtasks: subtasks.map((subtask) => ({
+                        id: subtask.id,
+                        title: subtask.fields?.['System.Title'],
+                        type: subtask.fields?.['System.WorkItemType'],
+                        state: subtask.fields?.['System.State'],
+                        assignedTo: subtask.fields?.['System.AssignedTo']?.displayName,
+                        parentId: item.id,
+                    }))
+                }
+            },
+            buildCachePayload: (items, sprint) => ({
+                lastUpdated: new Date().toISOString(),
+                sprint: sprint ? {
+                    name: sprint.name!,
+                    path: sprint.path!,
+                    startDate: sprint.attributes?.startDate?.toString(),
+                    finishDate: sprint.attributes?.finishDate?.toString()
+                } : null,
+                userEmail: userEmail,
+                workItems: items
+            }),
+        })
+    } catch(error) {
+        console.log(error);
+    }
 }
 
 async function refreshCacheJira(){
     const { cacheFilePath, cacheDir } = getCacheDir('jira-issues');
     const userEmail = process.env.JIRA_USER_EMAIL;
 
-    await runCacheRefresh<JiraSprint, JiraIssue>({
-        platformName: "Jira",
-        fetchSprint: () => jiraClient.getCurrentSprint(),
-        fetchSprintItems: () => jiraClient.getAllCurrentSprintUserStories(),
-        cacheDir,
-        cacheFilePath,
-        transformItems: async (item) => {
-            if (!item.id) return null;
 
-            const [comments, devLinks, subtasks] = await Promise.all([
-                jiraClient.getIssueComments(item.key),
-                jiraClient.getIssueDevelopmentLinks(item.id),
-                jiraClient.getChildIssues(item.key)
-            ]);
+    try {
+        const jiraClient = new JiraClient(
+            process.env.JIRA_BASE_URL!,
+            process.env.JIRA_EMAIL!,
+            process.env.JIRA_API_TOKEN!,
+            process.env.JIRA_PROJECT!,
+            process.env.JIRA_BOARD_ID
+        );
 
-            return {
-                id: item.id,
-                key: item?.key,
-                title: item?.fields?.summary,
-                type: item?.fields?.issuetype?.name,
-                state: item?.fields?.status?.name,
-                assignedTo: item?.fields?.assignee?.displayName,
-                description: typeof item?.fields?.description === 'string'
-                    ? item?.fields?.description
-                    : JSON.stringify(item?.fields?.description),
-                createdDate: item?.fields?.created,
-                changedDate: item?.fields?.updated,
-                labels: item?.fields?.labels?.join?.(', '),
-                comments: comments?.map((c: any) => ({
-                    author: c.author?.displayName,
-                    date: c.created,
-                    text: typeof c.body === 'string' ? c.body : JSON.stringify(c.body)
-                })) || [],
-                development: {
-                    pullRequests: devLinks?.pullRequests || [],
-                    commits: devLinks?.commits || [],
-                    branches: devLinks?.branches || [],
-                    hasPullRequests: devLinks?.hasPullRequests || false,
-                    hasCommits: devLinks?.hasCommits || false,
-                    hasBranches: devLinks?.hasBranches || false
-                },
-                subtasks: subtasks?.map?.((subtask) => ({
-                    id: subtask.id,
-                    key: subtask.key,
-                    title: subtask.fields?.summary,
-                    type: subtask.fields?.issuetype?.name,
-                    state: subtask.fields?.status?.name,
-                    assignedTo: subtask.fields?.assignee?.displayName,
-                    parentId: item.id,
-                    parentKey: item?.key
-                }))
-            };
-        },
-        buildCachePayload: (items, sprint) => ({
-            lastUpdated: new Date().toISOString(),
-            sprint: sprint ? {
-                name: sprint.name,
-                state: sprint.state,
-                startDate: sprint.startDate?.toString(),
-                finishDate: sprint.endDate?.toString(),
-            } : null,
-            userEmail: userEmail,
-            workItems: items
-        }),
-    })
+        await runCacheRefresh<JiraSprint, JiraIssue>({
+            platformName: "Jira",
+            fetchSprint: () => jiraClient.getCurrentSprint(),
+            fetchSprintItems: () => jiraClient.getAllCurrentSprintUserStories(),
+            cacheDir,
+            cacheFilePath,
+            transformItems: async (item) => {
+                if (!item.id) return null;
+
+                const [comments, devLinks, subtasks] = await Promise.all([
+                    jiraClient.getIssueComments(item.key),
+                    jiraClient.getIssueDevelopmentLinks(item.id),
+                    jiraClient.getChildIssues(item.key)
+                ]);
+
+                return {
+                    id: item.id,
+                    key: item?.key,
+                    title: item?.fields?.summary,
+                    type: item?.fields?.issuetype?.name,
+                    state: item?.fields?.status?.name,
+                    assignedTo: item?.fields?.assignee?.displayName,
+                    description: typeof item?.fields?.description === 'string'
+                        ? item?.fields?.description
+                        : JSON.stringify(item?.fields?.description),
+                    createdDate: item?.fields?.created,
+                    changedDate: item?.fields?.updated,
+                    labels: item?.fields?.labels?.join?.(', '),
+                    comments: comments?.map((c: any) => ({
+                        author: c.author?.displayName,
+                        date: c.created,
+                        text: typeof c.body === 'string' ? c.body : JSON.stringify(c.body)
+                    })) || [],
+                    development: {
+                        pullRequests: devLinks?.pullRequests || [],
+                        commits: devLinks?.commits || [],
+                        branches: devLinks?.branches || [],
+                        hasPullRequests: devLinks?.hasPullRequests || false,
+                        hasCommits: devLinks?.hasCommits || false,
+                        hasBranches: devLinks?.hasBranches || false
+                    },
+                    subtasks: subtasks?.map?.((subtask) => ({
+                        id: subtask.id,
+                        key: subtask.key,
+                        title: subtask.fields?.summary,
+                        type: subtask.fields?.issuetype?.name,
+                        state: subtask.fields?.status?.name,
+                        assignedTo: subtask.fields?.assignee?.displayName,
+                        parentId: item.id,
+                        parentKey: item?.key
+                    }))
+                };
+            },
+            buildCachePayload: (items, sprint) => ({
+                lastUpdated: new Date().toISOString(),
+                sprint: sprint ? {
+                    name: sprint.name,
+                    state: sprint.state,
+                    startDate: sprint.startDate?.toString(),
+                    finishDate: sprint.endDate?.toString(),
+                } : null,
+                userEmail: userEmail,
+                workItems: items
+            }),
+        })
+    } catch(error) {
+        console.log(error);
+    }
 }
 
 async function main(){
