@@ -117,7 +117,7 @@ async getCurrentSprint(): Promise<TeamSettingsIteration | null> {
       });
       
       if (currentSprint) {
-        return currentSprint;
+        return currentSprint as TeamSettingsIteration;
       }
     }
 

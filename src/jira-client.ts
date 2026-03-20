@@ -20,6 +20,7 @@ export interface JiraIssue {
     issuetype: {
       name: string;
     };
+    [key: string]: any,
   };
 }
 
