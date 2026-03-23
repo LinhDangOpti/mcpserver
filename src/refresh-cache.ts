@@ -152,7 +152,7 @@ async function runCacheRefresh<TSprint extends JiraSprint | TeamSettingsIteratio
     }
 }
 
-async function refreshCacheADO(){
+export async function refreshCacheADO(){
     const { cacheFilePath, cacheDir } = getCacheDir('work-items');
     const userEmail = process.env.AZURE_DEVOPS_USER_EMAIL;
     try {
@@ -230,7 +230,7 @@ async function refreshCacheADO(){
     }
 }
 
-async function refreshCacheJira(){
+export async function refreshCacheJira(){
     const { cacheFilePath, cacheDir } = getCacheDir('jira-issues');
     const userEmail = process.env.JIRA_USER_EMAIL;
 
@@ -314,7 +314,7 @@ async function refreshCacheJira(){
     }
 }
 
-async function main(){
+export async function main(){
     console.log('Starting concurrent cache refresh for ADO and Jira...\n');
 
     try {
@@ -336,5 +336,3 @@ async function main(){
         process.exit(1);
     }
 }
-
-main();
