@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "refresh": "npm run build && node dist/refresh-cache.js",
+    "refresh": "npm run build && node -e \"require('./dist/refresh-cache.js').main()\"",
     "query": "node query-cache.js",
     "test-webhook": "node test-teams-webhook.js",
     "test": "echo \"Error: no test specified\" && exit 1"

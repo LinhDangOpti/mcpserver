@@ -1,6 +1,7 @@
 import path from "path";
 import os from "os";
 import { fileURLToPath } from 'url';
+import fs from "fs";
 
 export function getCacheDir(cacheFileName: string): { cacheDir: string, cacheFilePath: string }{
     if (process.env.CLIENT_CACHE_NAME) {
@@ -19,4 +20,15 @@ export function getCacheDir(cacheFileName: string): { cacheDir: string, cacheFil
 
         return { cacheDir, cacheFilePath };
     }
+}
+
+export async function loadCache(platform: 'ado' | 'jira') {
+    const { cacheFilePath } = getCacheDir(platform === 'ado' ? 'work-items' : 'jira-issues');
+
+    if (!fs.existsSync(cacheFilePath)) {
+        throw new Error('Cache file not found. Finding and running refresh_cache_jira or refresh_cache_ado tool will populate the cache.');
+    }
+
+    const data = fs.readFileSync(cacheFilePath, 'utf8');
+    return JSON.parse(data);
 }
